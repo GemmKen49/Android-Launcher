@@ -1,3 +1,4 @@
+
 name: Build APK
 
 on: push
@@ -9,28 +10,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract ZIP into respective directory
+      - name: Extract ZIP
         run: |
           ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          [ -n "$ZIP" ] || { echo "No ZIP found"; exit 1; }
 
-          if [ -z "$ZIP" ]; then
-            echo "ERROR: No ZIP file found"
-            exit 1
-          fi
-
-          DIR="${ZIP%.zip}"
-          DIR="${DIR%.ZIP}"
-
+          DIR="./$(basename "${ZIP%.*}")"
           mkdir -p "$DIR"
           unzip -o "$ZIP" -d "$DIR"
 
-          echo "Extracted into: $DIR"
-          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "EXTRACT_DIR=$DIR" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
+          yes | sdkmanager --licenses
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -38,16 +39,14 @@ jobs:
 
       - name: Locate Android project
         run: |
-          PROJECT=$(find "$PROJECT_DIR" -name settings.gradle -o -name settings.gradle.kts | head -n 1)
+          PROJECT=$(find "$EXTRACT_DIR" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -printf '%h\n' | head -n 1)
 
           if [ -z "$PROJECT" ]; then
-            echo "ERROR: Android Gradle project not found"
+            echo "No Gradle project found"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Building project at $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT" >> "$GITHUB_ENV"
 
       - name: Build APK
         run: gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
