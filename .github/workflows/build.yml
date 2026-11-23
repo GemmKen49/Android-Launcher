@@ -1,4 +1,3 @@
-
 name: Build APK
 
 on: push
@@ -6,30 +5,55 @@ on: push
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract all ZIP files
+      - name: Extract ZIP into respective directory
         run: |
-          find . -type f -name "*.zip" -not -path "./.git/*" | while IFS= read -r zipfile; do
-            echo "Extracting: $zipfile"
-            unzip -o "$zipfile" -d "$(dirname "$zipfile")"
-          done
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: No ZIP file found"
+            exit 1
+          fi
+
+          DIR="${ZIP%.zip}"
+          DIR="${DIR%.ZIP}"
+
+          mkdir -p "$DIR"
+          unzip -o "$ZIP" -d "$DIR"
+
+          echo "Extracted into: $DIR"
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # Uses a Gradle install instead of the wrapper, so it works before the wrapper is committed.
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.13
 
-      - run: gradle assembleDebug --stacktrace
+      - name: Locate Android project
+        run: |
+          PROJECT=$(find "$PROJECT_DIR" -name settings.gradle -o -name settings.gradle.kts | head -n 1)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERROR: Android Gradle project not found"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Building project at $PROJECT_DIR"
+
+      - name: Build APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
           name: suite-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
