@@ -1,3 +1,4 @@
+
 name: Build APK
 
 on: push
@@ -7,6 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Extract all ZIP files
+        run: |
+          find . -type f -name "*.zip" -not -path "./.git/*" | while IFS= read -r zipfile; do
+            echo "Extracting: $zipfile"
+            unzip -o "$zipfile" -d "$(dirname "$zipfile")"
+          done
 
       - uses: actions/setup-java@v4
         with:
